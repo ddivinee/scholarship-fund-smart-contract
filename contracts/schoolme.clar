@@ -188,3 +188,52 @@
   )
 )
 
+;; Emergency function to immediately freeze all contract operations
+(define-public (emergency-halt)
+  (if (is-eq tx-sender (var-get board-chair))
+    (begin
+      (var-set frozen true)
+      (print {event: "emergency-halt", chair: tx-sender})
+      (ok true)
+    )
+    (err u105) ;; Unauthorized emergency action
+  )
+)
+
+;; Record an activity in the contract's audit log
+(define-public (record-activity (activity-type (string-ascii 32)) (user principal))
+  (let ((current-time (unwrap-panic (get-block-info? time u0))))
+    (ok true)
+  )
+)
+
+;; Read-Only Functions
+;; Get the total contribution amount for a specific donor
+(define-read-only (get-contribution (donor principal))
+  (default-to u0 (map-get? contributions donor))
+)
+
+;; Get the total amount in the scholarship pool
+(define-read-only (get-pool-total)
+  (ok (var-get scholarship-pool))
+)
+
+;; Check if the contract is currently frozen
+(define-read-only (is-frozen)
+  (ok (var-get frozen))
+)
+
+;; Get the allocation amount for a specific student
+(define-read-only (get-student-allocation (student principal))
+  (ok (default-to u0 (map-get? students student)))
+)
+
+;; Get the current board chair's address
+(define-read-only (get-board-chair)
+  (ok (var-get board-chair))
+)
+
+;; Get complete history for a donor
+(define-read-only (get-donor-history (donor principal))
+  (ok (tuple (contributions (map-get? contributions donor)) (disbursements (map-get? last-disbursement donor))))
+)
