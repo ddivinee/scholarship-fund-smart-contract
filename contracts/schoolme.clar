@@ -150,3 +150,41 @@
   )
 )
 
+;; Remove a student from the scholarship system
+(define-public (remove-student (student principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get board-chair)) ERR_NOT_AUTHORIZED)
+    (asserts! (is-some (map-get? students student)) ERR_STUDENT_NOT_FOUND)
+    (map-delete students student)
+    (ok true)
+  )
+)
+
+;; Confirm and execute student removal with additional safety check
+(define-public (confirm-student-removal (student principal) (confirm bool))
+  (begin
+    (asserts! (is-eq tx-sender (var-get board-chair)) ERR_NOT_AUTHORIZED)
+    (asserts! confirm ERR_NO_CONFIRMATION)
+    (asserts! (is-some (map-get? students student)) ERR_STUDENT_NOT_FOUND)
+    (map-delete students student)
+    (print {event: "student-removed", student: student})
+    (ok true)
+  )
+)
+
+;; Process a contribution return request
+(define-public (request-contribution-return (amount uint))
+  (let ((contribution (get-contribution tx-sender))
+        (current-time (unwrap-panic (get-block-info? time u0))))
+    (if (and (<= amount contribution) 
+             (>= (- current-time (unwrap-panic (get-block-info? time u0))) disbursement-wait-period))
+      (begin
+        (map-set contributions tx-sender (- contribution amount))
+        (var-set scholarship-pool (- (var-get scholarship-pool) amount))
+        (as-contract (stx-transfer? amount tx-sender 'ST000000000000000000002AMW42H))
+      )
+      (err u110) ;; Invalid return request
+    )
+  )
+)
+
