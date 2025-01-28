@@ -79,3 +79,74 @@
   )
 )
 
+;; Process a withdrawal request from a student
+(define-public (withdraw-funds (amount uint))
+  (let (
+    (student-allocation (default-to u0 (map-get? students tx-sender)))
+    (last-withdrawal-time (default-to u0 (map-get? last-disbursement tx-sender)))
+    (current-time (unwrap-panic (get-block-info? time u0)))
+  )
+    (if (and (not (var-get frozen))
+             (> student-allocation u0)
+             (>= student-allocation amount)
+             (>= (- current-time last-withdrawal-time) disbursement-wait-period))
+      (begin
+        (map-set students tx-sender (- student-allocation amount))
+        (var-set scholarship-pool (- (var-get scholarship-pool) amount))
+        (map-set last-disbursement tx-sender current-time)
+        (print {event: "withdrawal", student: tx-sender, amount: amount})
+        (as-contract (stx-transfer? amount tx-sender 'ST000000000000000000002AMW42H))
+      )
+      (err u102)
+    )
+  )
+)
+
+;; Transfer board chair authority to a new address
+(define-public (transfer-chair (new-chair principal))
+  (let ((current-chair (var-get board-chair)))
+    (begin
+      (asserts! (is-eq tx-sender current-chair) ERR_NOT_AUTHORIZED)
+      (asserts! (not (is-eq new-chair current-chair)) (err u6))
+      (var-set board-chair new-chair)
+      (ok new-chair)
+    )
+  )
+)
+
+;; Update the minimum and maximum contribution limits
+(define-public (set-contribution-limits (new-min uint) (new-max uint))
+  (if (and (is-eq tx-sender (var-get board-chair)) (< new-min new-max))
+    (begin
+      (var-set min-contribution new-min)
+      (var-set max-contribution new-max)
+      (print {event: "contribution-limits-updated", min: new-min, max: new-max})
+      (ok true)
+    )
+    (err u104)
+  )
+)
+
+;; Toggle the frozen state of the contract
+(define-public (set-frozen (new-frozen-state bool))
+  (let ((current-frozen-state (var-get frozen)))
+    (begin
+      (asserts! (is-eq tx-sender (var-get board-chair)) ERR_NOT_AUTHORIZED)
+      (asserts! (not (is-eq new-frozen-state current-frozen-state)) ERR_NO_CHANGE)
+      (var-set frozen new-frozen-state)
+      (print {event: "contract-status-changed", frozen: new-frozen-state})
+      (ok new-frozen-state)
+    )
+  )
+)
+
+;; Update the allocation amount for an existing student
+(define-public (update-student-allocation (student principal) (new-amount uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get board-chair)) ERR_NOT_AUTHORIZED)
+    (asserts! (> new-amount u0) ERR_INVALID_SCHOLARSHIP)
+    (asserts! (is-some (map-get? students student)) ERR_STUDENT_NOT_FOUND)
+    (ok (map-set students student new-amount))
+  )
+)
+
