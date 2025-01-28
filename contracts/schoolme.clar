@@ -1,30 +1,81 @@
+;; Scholarship Fund Smart Contract
+;; This smart contract implements a decentralized scholarship management system
+;; that enables transparent fund distribution and management.
+;; 
+;; Key features:
+;; - Secure fund management with time-locked withdrawals
+;; - Role-based access control with board chair oversight
+;; - Student allocation tracking and management
+;; - Emergency controls and safety measures
+;; - Transparent contribution and disbursement system
 
-;; title: schoolme
-;; version:
-;; summary:
-;; description:
 
-;; traits
-;;
+;; Constants
+;; Error codes for various contract operations
+(define-constant ERR_NOT_AUTHORIZED (err u1))    ;; When caller lacks necessary permissions
+(define-constant ERR_INVALID_SCHOLARSHIP (err u2))    ;; When scholarship amount is invalid
+(define-constant ERR_NO_FUNDS (err u3))    ;; When attempting operations with insufficient funds
+(define-constant ERR_STUDENT_NOT_FOUND (err u4))    ;; When referenced student doesn't exist
+(define-constant ERR_STUDENT_EXISTS (err u5))    ;; When attempting to add an existing student
+(define-constant ERR_NO_CONFIRMATION (err u8))    ;; When confirmation is required but not provided
+(define-constant ERR_NO_CHANGE (err u9))    ;; When operation would result in no state change
+(define-constant disbursement-wait-period u86400) ;; 24-hour cooldown period between disbursements
 
-;; token definitions
-;;
 
-;; constants
-;;
+;; State Variables
+;; Core contract state tracking
+(define-data-var scholarship-pool uint u0)           ;; Total available funds in the contract
+(define-data-var board-chair principal tx-sender)    ;; Address of the current board chair
+(define-data-var min-contribution uint u1)           ;; Minimum allowed contribution amount
+(define-data-var max-contribution uint u1000000000)  ;; Maximum allowed contribution amount
+(define-data-var frozen bool false)                  ;; Emergency freeze switch for contract
 
-;; data vars
-;;
 
-;; data maps
-;;
+;; Data Maps
+;; Track all financial and participant data
+(define-map contributions principal uint)      ;; Maps donors to their total contributions
+(define-map students principal uint)           ;; Maps students to their allocated amounts
+(define-map last-disbursement principal uint)  ;; Tracks last withdrawal time for each student
 
-;; public functions
-;;
 
-;; read only functions
-;;
+;; Private Functions
+;; Helper function to process scholarship disbursement to a student
+(define-private (disburse-to-student (student-data {student: principal, amount: uint}))
+  (let ((student (get student student-data))
+        (amount (get amount student-data)))
+    (try! (as-contract (stx-transfer? amount tx-sender student)))
+    (print {event: "scholarship-disbursed", student: student, amount: amount})
+    (ok true)
+  )
+)
 
-;; private functions
-;;
+;; Public Functions
+;; Process a new contribution to the scholarship fund
+(define-public (contribute (amount uint))
+  (if (and (not (var-get frozen))
+           (>= amount (var-get min-contribution))
+           (<= amount (var-get max-contribution)))
+    (begin
+      (map-set contributions tx-sender (+ (get-contribution tx-sender) amount))
+      (var-set scholarship-pool (+ (var-get scholarship-pool) amount))
+      (print {event: "contribution", donor: tx-sender, amount: amount})
+      (ok amount)
+    )
+    (err u100) 
+  )
+)
+
+;; Add a new student to the scholarship system
+(define-public (add-student (student principal) (amount uint))
+  (if (and (is-eq tx-sender (var-get board-chair))
+           (is-none (map-get? students student))
+           (> amount u0))
+    (begin
+      (map-set students student amount)
+      (print {event: "student-added", student: student, amount: amount})
+      (ok (tuple (student student) (amount amount)))
+    )
+    (err u101)
+  )
+)
 
